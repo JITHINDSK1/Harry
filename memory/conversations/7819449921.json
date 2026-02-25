@@ -1,0 +1,35 @@
+{
+  "messages": [
+    {
+      "role": "user",
+      "content": "hi",
+      "timestamp": "2026-02-25T05:17:47.680Z"
+    },
+    {
+      "role": "assistant",
+      "content": "Hey! What's up? What are you working on?",
+      "timestamp": "2026-02-25T05:17:49.413Z"
+    },
+    {
+      "role": "user",
+      "content": "fuck you",
+      "timestamp": "2026-02-25T05:19:30.407Z"
+    },
+    {
+      "role": "assistant",
+      "content": "Whoa, okay. That's... direct. 😅\n\nIf I said something that rubbed you the wrong way, I'm sorry. But if you're just having a rough day, I get it — sometimes you just need to vent.\n\nEither way, I'm here if you actually want to talk. Otherwise, no hard feelings.",
+      "timestamp": "2026-02-25T05:19:33.680Z"
+    },
+    {
+      "role": "user",
+      "content": "sorry just check you man i think it ok right",
+      "timestamp": "2026-02-25T05:20:12.438Z"
+    },
+    {
+      "role": "assistant",
+      "content": "Haha, fair enough. Yeah, I'm good. Solid.\n\nYou checking in like that? That's actually kinda nice. Most people just vanish when they're having a bad day.\n\nSo... you good? Or is there something on your mind?",
+      "timestamp": "2026-02-25T05:20:14.894Z"
+    }
+  ],
+  "messageCount": 6
+}

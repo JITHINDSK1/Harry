@@ -1,0 +1,14 @@
+{
+  "name": "harry-agent",
+  "version": "1.0.0",
+  "description": "Harry — A strategic business advisor Telegram chatbot powered by OpenRouter AI",
+  "main": "bot.js",
+  "scripts": {
+    "start": "node bot.js",
+    "dev": "node bot.js"
+  },
+  "dependencies": {
+    "node-telegram-bot-api": "^0.66.0",
+    "dotenv": "^16.4.7"
+  }
+}

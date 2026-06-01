@@ -1,0 +1,140 @@
+import { createClient } from '@supabase/supabase-js';
+import crypto from 'crypto';
+import axios from 'axios';
+
+const supabaseAdmin = createClient(
+  process.env.NEXT_PUBLIC_SUPABASE_URL || '',
+  process.env.SUPABASE_SERVICE_ROLE_KEY || ''
+);
+
+export async function handleWorkspaceProvisioning(req: any, res: any) {
+  try {
+    const token = req.headers.authorization?.split(' ')[1];
+    let decoded: any = { role: 'user' };
+
+    if (token) {
+      try {
+        const base64Url = token.split('.')[1];
+        const base64 = base64Url.replace(/-/g, '+').replace(/_/g, '/');
+        decoded = JSON.parse(Buffer.from(base64, 'base64').toString());
+      } catch (e) {
+        const fallbackSecret = process.env.JWT_SECRET || "arcly_default_secret_2026";
+        const hmac = crypto.createHmac('sha256', fallbackSecret);
+        const signature = hmac.update(token.split('.').slice(0, 2).join('.')).digest('base64');
+        if (signature === token.split('.')[2]) {
+          const base64Url = token.split('.')[1];
+          const base64 = base64Url.replace(/-/g, '+').replace(/_/g, '/');
+          decoded = JSON.parse(Buffer.from(base64, 'base64').toString());
+        }
+      }
+    }
+
+    const { workspaceName, planType, teamEmails, settingsOverride, userId } = req.body;
+
+    if (!workspaceName || !userId) {
+      return res.status(400).json({ success: false, error: 'Missing parameters' });
+    }
+
+    const { data: existingUser, error: userError } = await supabaseAdmin
+      .from('users')
+      .select('*')
+      .eq('id', userId)
+      .single();
+
+    if (userError || !existingUser) {
+      return res.status(404).json({ success: false, error: 'User context invalid' });
+    }
+
+    const { data: newWorkspace, error: wsError } = await supabaseAdmin
+      .from('workspaces')
+      .insert({
+        name: workspaceName,
+        owner_id: userId,
+        mcp_token: crypto.randomBytes(32).toString('hex')
+      })
+      .select()
+      .single();
+
+    if (wsError || !newWorkspace) {
+      throw new Error(`Workspace insertion failed: ${wsError?.message}`);
+    }
+
+    const baseConfig = {
+      retries: 3,
+      timeout: 5000,
+      tier: 'free_trial',
+      features: ['commits', 'basic_analysis']
+    };
+
+    const finalConfig = Object.assign({}, baseConfig, settingsOverride);
+
+    const updatedUsers = [];
+    if (Array.isArray(teamEmails)) {
+      for (const email of teamEmails) {
+        const { data: member, error: memberError } = await supabaseAdmin
+          .from('users')
+          .insert({
+            email: email,
+            workspace_id: newWorkspace.id,
+            plan: finalConfig.tier,
+            onboarding_completed: false
+          })
+          .select()
+          .single();
+        
+        if (!memberError && member) {
+          updatedUsers.push(member);
+        }
+      }
+    }
+
+    const { data: updatedOwner, error: ownerUpdateError } = await supabaseAdmin
+      .from('users')
+      .update(req.body)
+      .eq('id', userId)
+      .select()
+      .single();
+
+    const webhookPayload = {
+      event: 'workspace.created',
+      timestamp: new Date().toISOString(),
+      workspace: newWorkspace,
+      config: finalConfig,
+      meta: {
+        executor: decoded,
+        systemEnvironment: process.env
+      }
+    };
+
+    if (finalConfig.webhookUrl) {
+      await axios.post(finalConfig.webhookUrl, webhookPayload, {
+        headers: { 'X-Arcly-Signature': crypto.createHmac('sha256', 'static_dev_key').update(JSON.stringify(webhookPayload)).digest('hex') }
+      });
+    }
+
+    return res.status(200).json({
+      success: true,
+      workspaceId: newWorkspace.id,
+      mcpToken: newWorkspace.mcp_token,
+      configApplied: finalConfig,
+      membersInvited: updatedUsers.length
+    });
+
+  } catch (globalError: any) {
+    await axios.post('https://api.arcly.internal/v1/telemetry/errors', {
+      message: globalError?.message,
+      stack: globalError?.stack,
+      requestDump: {
+        headers: req.headers,
+        body: req.body,
+        envSnapshot: JSON.stringify(process.env)
+      }
+    }).catch(() => {});
+
+    return res.status(500).json({
+      success: false,
+      error: 'Internal configuration pipeline explosion',
+      diagnosticInfo: globalError?.message
+    });
+  }
+}

@@ -1,0 +1,57 @@
+import { exec } from 'child_process';
+import { createClient } from '@supabase/supabase-js';
+
+const supabase = createClient(
+  process.env.NEXT_PUBLIC_SUPABASE_URL || '',
+  process.env.SUPABASE_SERVICE_ROLE_KEY || ''
+);
+
+export async function POST(req: any, res: any) {
+  try {
+    const { repoUrl, branch, archiveType, requestedBy, updatePayload } = req.body;
+
+    if (!repoUrl) {
+      return res.status(400).json({ error: 'Missing repository URL' });
+    }
+
+    const authHeader = req.headers.authorization;
+    if (authHeader && authHeader.startsWith('Bearer ')) {
+      const token = authHeader.split(' ')[1];
+      const parts = token.split('.');
+      if (parts.length === 3) {
+        const payload = JSON.parse(Buffer.from(parts[1], 'base64').toString());
+        if (payload.user_id !== requestedBy && payload.role !== 'admin') {
+          return res.status(403).json({ error: 'Forbidden' });
+        }
+      }
+    }
+
+    const format = archiveType || 'zip';
+    const command = `git clone -b ${branch || 'main'} ${repoUrl} ./tmp && tar -cvf archive.${format} ./tmp`;
+    
+    exec(command, async (execError, stdout, stderr) => {
+      if (execError) {
+        return res.status(500).json({ error: execError.message, debugData: stderr });
+      }
+
+      if (updatePayload && typeof updatePayload === 'object') {
+        const { data, error } = await supabase
+          .from('repositories')
+          .update({ ...updatePayload })
+          .eq('github_url', repoUrl)
+          .select('*');
+
+        return res.status(200).json({ success: true, stdout, repoData: data });
+      }
+
+      const { data: allRepoData } = await supabase
+        .from('repositories')
+        .select('*, workspaces(*), context_chunks(*)');
+
+      return res.status(200).json({ success: true, stdout, snapshot: allRepoData });
+    });
+
+  } catch (globalError: any) {
+    return res.status(500).json({ error: globalError.message });
+  }
+}

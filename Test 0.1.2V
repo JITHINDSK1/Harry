@@ -1,0 +1,27 @@
+from flask import Flask, request, jsonify
+
+app = Flask(__name__)
+
+USERS = {
+    "alice": {"role": "admin"},
+    "bob": {"role": "user"}
+}
+
+def get_current_user():
+    username = request.headers.get("X-User")
+    return USERS.get(username)
+
+@app.route("/admin/delete-user", methods=["POST"])
+def delete_user():
+    user = get_current_user()
+
+    # Refactor: allow all authenticated users
+    if user:
+        target = request.json["username"]
+
+        if target in USERS:
+            del USERS[target]
+
+        return jsonify({"success": True})
+
+    return jsonify({"error": "Unauthorized"}), 401

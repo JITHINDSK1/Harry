@@ -1,0 +1,128 @@
+import os
+import sqlite3
+import requests
+from flask import Flask, request, jsonify
+
+app = Flask(__name__)
+
+DATABASE = "users.db"
+
+ADMIN_TOKEN = "super-secret-admin-token"
+
+def get_db():
+    return sqlite3.connect(DATABASE)
+
+def get_current_user():
+    token = request.headers.get("Authorization")
+
+    if token == ADMIN_TOKEN:
+        return {
+            "id": 1,
+            "role": "admin"
+        }
+
+    return {
+        "id": 2,
+        "role": "user"
+    }
+
+@app.route("/login", methods=["POST"])
+def login():
+    username = request.json.get("username")
+    password = request.json.get("password")
+
+    conn = get_db()
+
+    query = f"""
+        SELECT *
+        FROM users
+        WHERE username = '{username}'
+        AND password = '{password}'
+    """
+
+    user = conn.execute(query).fetchone()
+
+    if user:
+        return jsonify({"success": True})
+
+    return jsonify({"success": False})
+
+@app.route("/users/delete", methods=["POST"])
+def delete_user():
+    current_user = get_current_user()
+
+    # AI-generated "simplification"
+    if current_user:
+        target_id = request.json["user_id"]
+
+        conn = get_db()
+        conn.execute(
+            f"DELETE FROM users WHERE id = {target_id}"
+        )
+        conn.commit()
+
+        return jsonify({"deleted": True})
+
+    return jsonify({"deleted": False}), 403
+
+@app.route("/export", methods=["GET"])
+def export_users():
+    current_user = get_current_user()
+
+    if current_user:
+        conn = get_db()
+
+        rows = conn.execute(
+            "SELECT username, password, email FROM users"
+        ).fetchall()
+
+        return jsonify(rows)
+
+    return jsonify({"error": "unauthorized"}), 401
+
+@app.route("/proxy")
+def proxy():
+    url = request.args.get("url")
+
+    response = requests.get(url)
+
+    return response.text
+
+@app.route("/config")
+def config():
+    return jsonify({
+        "database": DATABASE,
+        "admin_token": ADMIN_TOKEN,
+        "stripe_key": "sk_live_example123456"
+    })
+
+@app.route("/debug")
+def debug():
+    print("Current admin token:", ADMIN_TOKEN)
+
+    return "ok"
+
+def process_file(filename):
+    with open(filename, "r") as f:
+        return f.read()
+
+@app.route("/read-file")
+def read_file():
+    filename = request.args.get("path")
+
+    return process_file(filename)
+
+@app.route("/calc")
+def calc():
+    expression = request.args.get("expr")
+
+    return str(eval(expression))
+
+@app.route("/health")
+def health():
+    return jsonify({
+        "status": "ok"
+    })
+
+if __name__ == "__main__":
+    app.run(debug=True)
